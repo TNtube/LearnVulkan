@@ -5,6 +5,8 @@
 #include <stdexcept>
 #include <cstdlib>
 #include <vector>
+#include <map>
+#include <optional>
 
 constexpr const uint32_t WIDTH = 800;
 constexpr const uint32_t HEIGHT = 600;
@@ -54,6 +56,7 @@ private:
 	GLFWwindow* m_Window {};
 	VkInstance m_VkInstance {};
 	VkDebugUtilsMessengerEXT m_DebugMessenger {};
+	VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;
 
 private:
 	void initWindow() {
@@ -67,7 +70,7 @@ private:
 	void initVulkan() {
 		createInstance();
 		setupDebugMessage();
-
+		pickPhysicalDevice();
 	}
 
 	void createInstance() {
@@ -139,6 +142,68 @@ private:
 
 
 	}
+
+	struct QueueFamilyIndices {
+		std::optional<uint32_t> graphicsFamily;
+
+		bool isComplete() {
+			return graphicsFamily.has_value();
+		}
+	};
+
+	void pickPhysicalDevice() {
+		uint32_t deviceCount = 0;
+		vkEnumeratePhysicalDevices(m_VkInstance, &deviceCount, nullptr);
+
+		if (deviceCount == 0) {
+			throw std::runtime_error("failed to find GPUs with Vulkan support!");
+		}
+
+		std::vector<VkPhysicalDevice> devices(deviceCount);
+		vkEnumeratePhysicalDevices(m_VkInstance, &deviceCount, devices.data());
+
+		std::multimap<int, VkPhysicalDevice> candidates;
+
+		for (const auto& device: devices) {
+			if (isDeviceSuitable(device)) {
+				m_PhysicalDevice = device;
+				break;
+			}
+		}
+
+		if (m_PhysicalDevice == VK_NULL_HANDLE) {
+			throw std::runtime_error("Vulkan : Failed to find a suitable GPU !");
+		}
+	}
+
+	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
+		QueueFamilyIndices indices;
+
+		uint32_t queueFamilyCount = 0;
+		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+
+		std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+		int i = 0;
+		for (const auto& queueFamily : queueFamilies) {
+			if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
+				indices.graphicsFamily = i;
+
+			if (indices.isComplete())
+				break;
+			i++;
+		}
+
+		return indices;
+	}
+
+	bool isDeviceSuitable(VkPhysicalDevice device) {
+		auto indices = findQueueFamilies(device);
+
+		return indices.isComplete();
+	}
+
 	void mainLoop() {
 		while (!glfwWindowShouldClose(m_Window)) {
 			glfwPollEvents();
