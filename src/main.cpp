@@ -39,6 +39,7 @@ public:
 	}
 
 	virtual ~HelloTriangleApplication() {
+		vkDestroyDevice(m_Device, nullptr);
 		#ifndef NDEBUG
 		DestroyDebugUtilsMessengerEXT(m_VkInstance, m_DebugMessenger, nullptr);
 		#endif
@@ -57,6 +58,8 @@ private:
 	VkInstance m_VkInstance {};
 	VkDebugUtilsMessengerEXT m_DebugMessenger {};
 	VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;
+	VkDevice m_Device {};
+	VkQueue graphicsQueue {};
 
 private:
 	void initWindow() {
@@ -71,6 +74,7 @@ private:
 		createInstance();
 		setupDebugMessage();
 		pickPhysicalDevice();
+		createLogicalDevice();
 	}
 
 	void createInstance() {
@@ -83,7 +87,7 @@ private:
 		appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
 		appInfo.pEngineName = "No Engine";
 		appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-		appInfo.apiVersion = VK_API_VERSION_1_0;
+		appInfo.apiVersion = VK_API_VERSION_1_1;
 
 		VkInstanceCreateInfo createInfo{};
 		createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -202,6 +206,46 @@ private:
 		auto indices = findQueueFamilies(device);
 
 		return indices.isComplete();
+	}
+
+	void createLogicalDevice() {
+		QueueFamilyIndices indices = findQueueFamilies(m_PhysicalDevice);
+
+		VkDeviceQueueCreateInfo queueCreateInfo {};
+		queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
+		queueCreateInfo.queueCount = 1;
+
+		float queuePriority = 1.0f;
+		queueCreateInfo.pQueuePriorities = &queuePriority;
+
+		VkPhysicalDeviceFeatures deviceFeatures {};
+
+		VkDeviceCreateInfo createInfo {};
+		createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+		createInfo.pQueueCreateInfos = &queueCreateInfo;
+		createInfo.queueCreateInfoCount = 1;
+
+		createInfo.pEnabledFeatures = &deviceFeatures;
+
+		createInfo.enabledExtensionCount = 0;
+
+		#ifndef NDEBUG
+
+		createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+		createInfo.ppEnabledLayerNames = validationLayers.data();
+
+		#else
+
+		createInfo.enabledLayerCount = 0;
+
+		#endif
+
+		if (vkCreateDevice(m_PhysicalDevice, &createInfo, nullptr, &m_Device) != VK_SUCCESS)
+			throw std::runtime_error("Vulkan : Failed to create logical device !");
+
+
+		vkGetDeviceQueue(m_Device, indices.graphicsFamily.value(), 0, &graphicsQueue);
 	}
 
 	void mainLoop() {
