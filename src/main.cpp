@@ -903,7 +903,7 @@ private:
 	bool checkValidationLayerSupport() {
 
 #ifdef NDEBUG
-		return false
+		return false;
 #endif
 		uint32_t layerCount;
 		vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
