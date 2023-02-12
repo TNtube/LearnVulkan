@@ -87,6 +87,9 @@ public:
 	virtual ~HelloTriangleApplication() {
 		cleanupSwapChain();
 
+		vkDestroyBuffer(m_Device, m_VertexBuffer, nullptr);
+		vkFreeMemory(m_Device, m_VertexBufferMemory, nullptr);
+
 		vkDestroyPipeline(m_Device, m_GraphicsPipeline, nullptr);
 		vkDestroyPipelineLayout(m_Device, m_PipelineLayout, nullptr);
 
@@ -143,6 +146,9 @@ private:
 
 	VkCommandPool m_CommandPool {};
 
+	VkBuffer m_VertexBuffer {};
+	VkDeviceMemory m_VertexBufferMemory {};
+
 	std::vector<VkCommandBuffer> m_CommandBuffers;
 
 	std::vector<VkSemaphore> m_ImageAvailableSemaphores;
@@ -180,6 +186,7 @@ private:
 		createGraphicsPipeline();
 		createFramebuffers();
 		createCommandPool();
+		createVertexBuffer();
 		createCommandBuffer();
 		createSyncObjects();
 	}
@@ -808,6 +815,50 @@ private:
 			throw std::runtime_error("Vulkan : failed to create command pool !");
 	}
 
+	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
+		VkPhysicalDeviceMemoryProperties memoryProperties {};
+		vkGetPhysicalDeviceMemoryProperties(m_PhysicalDevice, &memoryProperties);
+
+		for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++) {
+			if (typeFilter & (1 << i) && (memoryProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+				return i;
+			}
+		}
+		throw std::runtime_error("Vulkan : failed to find a suitable memory type !");
+	}
+
+	void createVertexBuffer() {
+		VkBufferCreateInfo bufferInfo {};
+		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufferInfo.size = sizeof(vertices[0]) * vertices.size();
+		bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+		if (vkCreateBuffer(m_Device, &bufferInfo, nullptr, &m_VertexBuffer) != VK_SUCCESS)
+			throw std::runtime_error("Vulkan : failed to create vertex buffer !");
+
+
+		VkMemoryRequirements memoryRequirements {};
+		vkGetBufferMemoryRequirements(m_Device, m_VertexBuffer, &memoryRequirements);
+
+		VkMemoryAllocateInfo allocateInfo {};
+		allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocateInfo.allocationSize = memoryRequirements.size;
+		allocateInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits,
+							      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+							      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+		if (vkAllocateMemory(m_Device, &allocateInfo, nullptr, &m_VertexBufferMemory) != VK_SUCCESS)
+			throw std::runtime_error("Vulkan : Failed to allocate vertex buffer memory !");
+
+		vkBindBufferMemory(m_Device, m_VertexBuffer, m_VertexBufferMemory, 0);
+
+		void* data;
+		vkMapMemory(m_Device, m_VertexBufferMemory, 0, bufferInfo.size, 0, &data);
+		std::memcpy(data, vertices.data(), static_cast<size_t>(bufferInfo.size));
+		vkUnmapMemory(m_Device, m_VertexBufferMemory);
+	}
+
 	void createCommandBuffer() {
 		m_CommandBuffers.resize(MAX_FRAME_IN_FLIGHT);
 		VkCommandBufferAllocateInfo allocInfo {};
@@ -848,6 +899,10 @@ private:
 
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_GraphicsPipeline);
 
+		VkBuffer vertexBuffers[] = { m_VertexBuffer };
+		VkDeviceSize offsets[] = { 0 };
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+
 		VkViewport viewport {};
 		viewport.x = 0.0f;
 		viewport.y = 0.0f;
@@ -862,7 +917,7 @@ private:
 		scissor.extent = m_SwapChainExtent;
 		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+		vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
 
 		vkCmdEndRenderPass(commandBuffer);
 
