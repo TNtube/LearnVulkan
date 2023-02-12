@@ -72,10 +72,16 @@ struct Vertex {
 };
 
 const std::vector<Vertex> vertices = {
-     {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-     {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-     {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+	{{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+	{{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+	{{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+	{{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
 };
+
+const std::vector<uint16_t> indices = {
+	0, 1, 2, 2, 3, 0
+};
+
 
 class HelloTriangleApplication {
 public:
@@ -89,6 +95,8 @@ public:
 
 		vkDestroyBuffer(m_Device, m_VertexBuffer, nullptr);
 		vkFreeMemory(m_Device, m_VertexBufferMemory, nullptr);
+		vkDestroyBuffer(m_Device, m_IndexBuffer, nullptr);
+		vkFreeMemory(m_Device, m_IndexBufferMemory, nullptr);
 
 		vkDestroyPipeline(m_Device, m_GraphicsPipeline, nullptr);
 		vkDestroyPipelineLayout(m_Device, m_PipelineLayout, nullptr);
@@ -148,6 +156,8 @@ private:
 
 	VkBuffer m_VertexBuffer {};
 	VkDeviceMemory m_VertexBufferMemory {};
+	VkBuffer m_IndexBuffer {};
+	VkDeviceMemory m_IndexBufferMemory {};
 
 	std::vector<VkCommandBuffer> m_CommandBuffers;
 
@@ -187,6 +197,7 @@ private:
 		createFramebuffers();
 		createCommandPool();
 		createVertexBuffer();
+		createIndexBuffer();
 		createCommandBuffer();
 		createSyncObjects();
 	}
@@ -827,36 +838,109 @@ private:
 		throw std::runtime_error("Vulkan : failed to find a suitable memory type !");
 	}
 
-	void createVertexBuffer() {
+	void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory) {
 		VkBufferCreateInfo bufferInfo {};
 		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-		bufferInfo.size = sizeof(vertices[0]) * vertices.size();
-		bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+		bufferInfo.size = size;
+		bufferInfo.usage = usage;
 		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-		if (vkCreateBuffer(m_Device, &bufferInfo, nullptr, &m_VertexBuffer) != VK_SUCCESS)
+		if (vkCreateBuffer(m_Device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS)
 			throw std::runtime_error("Vulkan : failed to create vertex buffer !");
 
-
 		VkMemoryRequirements memoryRequirements {};
-		vkGetBufferMemoryRequirements(m_Device, m_VertexBuffer, &memoryRequirements);
+		vkGetBufferMemoryRequirements(m_Device, buffer, &memoryRequirements);
 
 		VkMemoryAllocateInfo allocateInfo {};
 		allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 		allocateInfo.allocationSize = memoryRequirements.size;
-		allocateInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits,
-							      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-							      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+		allocateInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits, properties);
 
-		if (vkAllocateMemory(m_Device, &allocateInfo, nullptr, &m_VertexBufferMemory) != VK_SUCCESS)
+		if (vkAllocateMemory(m_Device, &allocateInfo, nullptr, &bufferMemory) != VK_SUCCESS)
 			throw std::runtime_error("Vulkan : Failed to allocate vertex buffer memory !");
 
-		vkBindBufferMemory(m_Device, m_VertexBuffer, m_VertexBufferMemory, 0);
+		vkBindBufferMemory(m_Device, buffer, bufferMemory, 0);
+	}
+
+	void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
+		VkCommandBufferAllocateInfo allocateInfo {};
+		allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		allocateInfo.commandPool = m_CommandPool;
+		allocateInfo.commandBufferCount = 1;
+
+		VkCommandBuffer commandBuffer;
+		vkAllocateCommandBuffers(m_Device, &allocateInfo, &commandBuffer);
+
+		VkCommandBufferBeginInfo beginInfo {};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+		VkBufferCopy copyRegion {};
+		copyRegion.srcOffset = 0;
+		copyRegion.dstOffset = 0;
+		copyRegion.size = size;
+		vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+
+		vkEndCommandBuffer(commandBuffer);
+
+		VkSubmitInfo submitInfo {};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &commandBuffer;
+
+		vkQueueSubmit(m_GraphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+		vkQueueWaitIdle(m_GraphicsQueue);
+
+		vkFreeCommandBuffers(m_Device, m_CommandPool, 1, &commandBuffer);
+	}
+
+	void createVertexBuffer() {
+		VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+
+		VkBuffer stagingBuffer;
+		VkDeviceMemory stagingBufferMemory;
+		createBuffer(bufferSize,
+			     VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			     stagingBuffer, stagingBufferMemory);
 
 		void* data;
-		vkMapMemory(m_Device, m_VertexBufferMemory, 0, bufferInfo.size, 0, &data);
-		std::memcpy(data, vertices.data(), static_cast<size_t>(bufferInfo.size));
-		vkUnmapMemory(m_Device, m_VertexBufferMemory);
+		vkMapMemory(m_Device, stagingBufferMemory, 0, bufferSize, 0, &data);
+		std::memcpy(data, vertices.data(), static_cast<size_t>(bufferSize));
+		vkUnmapMemory(m_Device, stagingBufferMemory);
+
+		createBuffer(bufferSize,
+		             VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+		             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		             m_VertexBuffer, m_VertexBufferMemory);
+
+		copyBuffer(stagingBuffer, m_VertexBuffer, bufferSize);
+
+		vkDestroyBuffer(m_Device, stagingBuffer, nullptr);
+		vkFreeMemory(m_Device, stagingBufferMemory, nullptr);
+	}
+
+	void createIndexBuffer() {
+		VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
+
+		VkBuffer stagingBuffer;
+		VkDeviceMemory stagingBufferMemory;
+		createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+
+		void* data;
+		vkMapMemory(m_Device, stagingBufferMemory, 0, bufferSize, 0, &data);
+		memcpy(data, indices.data(), (size_t) bufferSize);
+		vkUnmapMemory(m_Device, stagingBufferMemory);
+
+		createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_IndexBuffer, m_IndexBufferMemory);
+
+		copyBuffer(stagingBuffer, m_IndexBuffer, bufferSize);
+
+		vkDestroyBuffer(m_Device, stagingBuffer, nullptr);
+		vkFreeMemory(m_Device, stagingBufferMemory, nullptr);
 	}
 
 	void createCommandBuffer() {
@@ -902,6 +986,7 @@ private:
 		VkBuffer vertexBuffers[] = { m_VertexBuffer };
 		VkDeviceSize offsets[] = { 0 };
 		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+		vkCmdBindIndexBuffer(commandBuffer, m_IndexBuffer, 0, VK_INDEX_TYPE_UINT16);
 
 		VkViewport viewport {};
 		viewport.x = 0.0f;
@@ -917,7 +1002,7 @@ private:
 		scissor.extent = m_SwapChainExtent;
 		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-		vkCmdDraw(commandBuffer, static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
 		vkCmdEndRenderPass(commandBuffer);
 
