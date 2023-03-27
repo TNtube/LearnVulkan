@@ -231,7 +231,7 @@ private:
 	void initWindow() {
 		glfwInit();
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+		glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
 		m_Window = glfwCreateWindow(WIDTH, HEIGHT, "Hello Vulkan !", nullptr, nullptr);
 
@@ -256,9 +256,9 @@ private:
 		createCommandPool();
 		createDepthResources();
 		createFramebuffers();
-		createTextureImage();
-		createTextureImageView();
-		createTextureSampler();
+		createTextureImage(); // Done
+		createTextureImageView(); // Todo
+		createTextureSampler(); // Todo
 		loadModel();
 		createVertexBuffer();
 		createIndexBuffer();
