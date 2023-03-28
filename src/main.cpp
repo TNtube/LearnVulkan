@@ -148,11 +148,12 @@ public:
 
 		vkDestroyDevice(m_Device, nullptr);
 
+		vkDestroySurfaceKHR(m_VkInstance, m_Surface, nullptr);
+
 		#ifndef NDEBUG
 		DestroyDebugUtilsMessengerEXT(m_VkInstance, m_DebugMessenger, nullptr);
 		#endif
 
-		vkDestroySurfaceKHR(m_VkInstance, m_Surface, nullptr);
 		vkDestroyInstance(m_VkInstance, nullptr);
 
 		glfwDestroyWindow(m_Window);
@@ -243,12 +244,12 @@ private:
 	}
 
 	void initVulkan() {
-		createInstance();
-		setupDebugMessage();
-		createSurface();
-		pickPhysicalDevice();
-		createLogicalDevice();
-		createSwapChain();
+		createInstance(); // Done
+		setupDebugMessage(); // Done
+		createSurface(); // Done
+		pickPhysicalDevice(); // Done
+		createLogicalDevice(); // Done
+		createSwapChain(); // Todo
 		createImageViews();
 		createRenderPass();
 		createDescriptorSetLayout();
@@ -257,8 +258,8 @@ private:
 		createDepthResources();
 		createFramebuffers();
 		createTextureImage(); // Done
-		createTextureImageView(); // Todo
-		createTextureSampler(); // Todo
+		createTextureImageView(); // Done
+		createTextureSampler(); // Done
 		loadModel();
 		createVertexBuffer();
 		createIndexBuffer();
